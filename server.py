@@ -16,6 +16,8 @@ Env vars (all optional):
 
 import logging
 import os
+import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -31,9 +33,11 @@ logging.basicConfig(
 )
 
 DEFAULT_MODEL_PATH = "/Users/bobo/.cache/whisper-cpp/ggml-large-v3.bin"
+DEFAULT_VAD_PATH = "/Users/bobo/.cache/whisper-cpp/ggml-silero-v5.1.2.bin"
 MODEL_PATH = os.getenv("WHISPER_MODEL", DEFAULT_MODEL_PATH)
 N_THREADS = int(os.getenv("WHISPER_N_THREADS", "0"))
 VAD_ENABLED = os.getenv("WHISPER_VAD", "1") not in ("0", "false", "False")
+VAD_MODEL_PATH = os.getenv("WHISPER_VAD_MODEL", DEFAULT_VAD_PATH)
 HOST = os.getenv("WHISPER_HOST", "0.0.0.0")
 PORT = int(os.getenv("WHISPER_PORT", "8170"))
 
@@ -41,8 +45,8 @@ ALLOWED_SUFFIXES = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".webm", "
 RESPONSE_FORMATS = {"json", "text", "srt", "vtt"}
 
 LOG.info(
-    "loading model=%s n_threads=%d vad=%s",
-    MODEL_PATH, N_THREADS, VAD_ENABLED,
+    "loading model=%s n_threads=%d vad=%s vad_model=%s",
+    MODEL_PATH, N_THREADS, VAD_ENABLED, VAD_MODEL_PATH,
 )
 ASR = Model(
     model=MODEL_PATH,
@@ -51,6 +55,7 @@ ASR = Model(
     print_realtime=False,
     print_timestamps=False,
     vad=VAD_ENABLED,
+    vad_model_path=VAD_MODEL_PATH if VAD_ENABLED else None,
 )
 LOG.info("model loaded")
 
@@ -60,6 +65,44 @@ def _suffix(filename: str | None) -> str:
         return ".wav"
     suf = Path(filename).suffix.lower()
     return suf if suf else ".wav"
+
+
+def _needs_resample(path: Path) -> bool:
+    """whisper.cpp accepts only 16 kHz mono PCM WAV. Probe with ffprobe."""
+    if path.suffix.lower() != ".wav":
+        return True
+    try:
+        out = subprocess.check_output(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a:0",
+                "-show_entries", "stream=sample_rate,channels,codec_name",
+                "-of", "csv=p=0",
+                str(path),
+            ],
+            stderr=subprocess.STDOUT, timeout=10,
+        ).decode().strip().split(",")
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as exc:
+        LOG.warning("ffprobe failed (%s); forcing resample", exc)
+        return True
+    if len(out) < 3:
+        return True
+    codec, sample_rate, channels = out[0], out[1], out[2]
+    return codec != "pcm_s16le" or sample_rate != "16000" or channels != "1"
+
+
+def _resample_to_wav(src: Path) -> Path:
+    dst = Path(tempfile.mkdtemp(prefix="whisper-resample-")) / "audio.wav"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-i", str(src),
+            "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+            str(dst),
+        ],
+        check=True, timeout=60,
+    )
+    return dst
 
 
 def _error(message: str, status: int = 500, err_type: str = "internal_error") -> JSONResponse:
@@ -115,14 +158,25 @@ async def transcriptions(
 
     tmp_path = ""
     out_path = ""
+    resampled_dir = ""
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, dir="/tmp", delete=False) as tf:
             tf.write(raw)
             tmp_path = tf.name
 
+        # whisper.cpp requires 16 kHz mono PCM WAV; resample via ffmpeg if not
+        asr_path = Path(tmp_path)
+        if _needs_resample(asr_path):
+            if not shutil.which("ffmpeg"):
+                return _error("ffmpeg not in PATH; cannot preprocess non-16kHz audio",
+                              status=500, err_type="internal_error")
+            resampled = _resample_to_wav(asr_path)
+            asr_path = resampled
+            resampled_dir = str(resampled.parent)
+
         # whisper.cpp auto-detects language when language="" / None
         kwargs = {"language": language or ""}
-        segments = ASR.transcribe(tmp_path, **kwargs)
+        segments = ASR.transcribe(str(asr_path), **kwargs)
 
         if response_format == "json":
             return JSONResponse(_segments_to_json(segments, language))
@@ -154,6 +208,11 @@ async def transcriptions(
                     Path(p).unlink()
                 except OSError:
                     pass
+        if resampled_dir:
+            try:
+                shutil.rmtree(resampled_dir, ignore_errors=True)
+            except OSError:
+                pass
 
 
 @app.get("/health")
@@ -163,6 +222,7 @@ async def health():
         "model": MODEL_PATH,
         "n_threads": N_THREADS,
         "vad": VAD_ENABLED,
+        "vad_model": VAD_MODEL_PATH if VAD_ENABLED else None,
         "backend": "pywhispercpp",
     }
 

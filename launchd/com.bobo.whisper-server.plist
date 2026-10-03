@@ -22,6 +22,8 @@
         <string>0</string>
         <key>WHISPER_VAD</key>
         <string>1</string>
+        <key>WHISPER_VAD_MODEL</key>
+        <string>/Users/bobo/.cache/whisper-cpp/ggml-silero-v5.1.2.bin</string>
         <key>WHISPER_HOST</key>
         <string>0.0.0.0</string>
         <key>WHISPER_PORT</key>

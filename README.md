@@ -35,14 +35,18 @@ print(c.audio.transcriptions.create(
 
 ```bash
 curl http://JiangdeMac-mini.local:8170/health
-# {"status":"ok","model":"/Users/bobo/.cache/whisper-cpp/ggml-large-v3.bin","n_threads":0,"vad":true,"backend":"pywhispercpp"}
+# {"status":"ok","model":".../ggml-large-v3.bin","n_threads":0,"vad":true,"vad_model":".../ggml-silero-v5.1.2.bin","backend":"pywhispercpp"}
 ```
 
 > Windows 端如果 mDNS 不通（Bonjour 没装/被阻），把 `JiangdeMac-mini.local` 换成 Mac mini 内网 IP：`ifconfig | grep "inet " | grep -v 127.0.0.1`
 
 ## 部署
 
-依赖：Python 3.11+（实测 3.12）、whisper.cpp 模型文件（默认读 `~/.cache/whisper-cpp/ggml-large-v3.bin`）。
+依赖：Python 3.11+（实测 3.12）、ffmpeg（处理非 16kHz 音频）、whisper.cpp 模型文件（默认读 `~/.cache/whisper-cpp/ggml-large-v3.bin`）、silero VAD 模型（默认读 `~/.cache/whisper-cpp/ggml-silero-v5.1.2.bin`）。
+
+### 音频采样率
+
+whisper.cpp 只接受 16 kHz mono PCM WAV；服务端用 ffmpeg 探测上传文件，自动重采样到 16kHz 再交给引擎。客户端无需关心。
 
 ### 手动启动（开发/调试）
 
@@ -53,7 +57,16 @@ tail -f logs/server.log
 bash stop.sh          # 优雅停
 ```
 
-首次运行会编译 pywhispercpp 的 C 扩展（几十秒）；不下载任何模型。
+首次运行会编译 pywhispercpp 的 C 扩展（几十秒）；不下载 ASR 模型（ggml-large-v3.bin 已存在）。
+
+如需启用 VAD 且 `~/.cache/whisper-cpp/ggml-silero-v5.1.2.bin` 不存在：
+
+```bash
+curl -L -o ~/.cache/whisper-cpp/ggml-silero-v5.1.2.bin \
+  https://hf-mirror.com/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin
+```
+
+或临时关 VAD：`WHISPER_VAD=0 bash start.sh`。
 
 ### launchd 守护（24h 主机）
 
@@ -74,7 +87,8 @@ bash uninstall.sh     # 卸载
 | --- | --- | --- |
 | `WHISPER_MODEL` | `/Users/bobo/.cache/whisper-cpp/ggml-large-v3.bin` | 指向 `ggml-*.bin` 绝对路径。已下载的还有 `ggml-medium.bin` / `ggml-small.bin` 可切换 |
 | `WHISPER_N_THREADS` | `0` | 0 = auto（`min(4, os.cpu_count())`）；arm64 上 4-8 即可 |
-| `WHISPER_VAD` | `1` | whisper.cpp 内置 VAD；设 `0` 关闭 |
+| `WHISPER_VAD` | `1` | whisper.cpp 内置 Silero VAD；设 `0` 关闭 |
+| `WHISPER_VAD_MODEL` | `/Users/bobo/.cache/whisper-cpp/ggml-silero-v5.1.2.bin` | silero VAD ggml 文件 |
 | `WHISPER_HOST` | `0.0.0.0` | 监听地址 |
 | `WHISPER_PORT` | `8170` | 监听端口 |
 
