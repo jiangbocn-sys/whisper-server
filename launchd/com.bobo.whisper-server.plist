@@ -17,9 +17,9 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>WHISPER_MODEL</key>
-        <string>Systran/faster-distil-whisper-large-v3</string>
-        <key>WHISPER_COMPUTE_TYPE</key>
-        <string>float32</string>
+        <string>/Users/bobo/.cache/whisper-cpp/ggml-large-v3.bin</string>
+        <key>WHISPER_N_THREADS</key>
+        <string>0</string>
         <key>WHISPER_VAD</key>
         <string>1</string>
         <key>WHISPER_HOST</key>
