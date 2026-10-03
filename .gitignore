@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+logs/
+.pid
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+.DS_Store

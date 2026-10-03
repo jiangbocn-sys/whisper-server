@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.bobo.whisper-server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/bobo/projects/whisper-server/.venv/bin/python</string>
+        <string>/Users/bobo/projects/whisper-server/server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/bobo/projects/whisper-server</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>WHISPER_MODEL</key>
+        <string>Systran/faster-distil-whisper-large-v3</string>
+        <key>WHISPER_COMPUTE_TYPE</key>
+        <string>float32</string>
+        <key>WHISPER_VAD</key>
+        <string>1</string>
+        <key>WHISPER_HOST</key>
+        <string>0.0.0.0</string>
+        <key>WHISPER_PORT</key>
+        <string>8170</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/bobo/projects/whisper-server/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/bobo/projects/whisper-server/logs/launchd.err.log</string>
+</dict>
+</plist>
